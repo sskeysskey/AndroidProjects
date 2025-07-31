@@ -1,0 +1,42 @@
+[
+  {
+    "level": 1,
+    "score": 200,
+    "consecutiveThreeOrMoreLinesCleared": 4
+  },
+  {
+    "level": 2,
+    "score": 300,
+    "consecutiveThreeOrMoreLinesCleared": 6
+  },
+  {
+    "level": 3,
+    "score": 450,
+    "consecutiveThreeOrMoreLinesCleared": 8
+  },
+  {
+    "level": 4,
+    "score": 20000,
+    "consecutiveThreeOrMoreLinesCleared": 80
+  },
+  {
+    "level": 5,
+    "score": 250,
+    "consecutiveThreeOrMoreLinesCleared": 10
+  },
+  {
+    "level": 6,
+    "score": 300,
+    "consecutiveThreeOrMoreLinesCleared": 12
+  },
+  {
+    "level": 7,
+    "score": 350,
+    "consecutiveThreeOrMoreLinesCleared": 14
+  },
+  {
+    "level": 8,
+    "score": 400,
+    "consecutiveThreeOrMoreLinesCleared": 18
+  }
+]

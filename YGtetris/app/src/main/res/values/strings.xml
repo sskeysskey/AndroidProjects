@@ -1,0 +1,15 @@
+<resources>
+    <string name="app_name">YGtetris</string>
+    <string name="play_button_description">开始游戏按钮</string>
+    <string name="current_level_description">关卡标记</string>
+    <string name="level_background_description">关卡背景</string>
+    <string name="reset_level">重置关卡</string>
+    <string name="reset_score">重置分数和连消</string>
+    <string name="itemclear4line_imageview_description">道具</string>
+    <string name="itemclear4line_count">道具</string>
+    <string name="left_button">左移动</string>
+    <string name="right_button">右移动</string>
+    <string name="drop_button">下落</string>
+    <string name="shift_button">旋转</string>
+
+</resources>

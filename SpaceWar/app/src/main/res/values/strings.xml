@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">SpaceWar</string>
+    <string name="launch">启动页</string>
+    <string name="start">开始游戏</string>
+</resources>

@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    tools:context="com.xiaoyan.tetriswar.MainActivity">
+
+    <FrameLayout
+        android:id="@+id/frameLayout"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"/>
+
+    <ImageView
+        android:id="@+id/left_button"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        app:layout_constraintHorizontal_bias="0.01"
+        app:layout_constraintVertical_bias="0.5"
+        android:src="@drawable/leftbutton"
+        android:contentDescription="@string/left_button"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"/>
+
+    <ImageView
+        android:id="@+id/right_button"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        app:layout_constraintHorizontal_bias="0.99"
+        app:layout_constraintVertical_bias="0.5"
+        android:src="@drawable/rightbutton"
+        android:contentDescription="@string/right_button"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"/>
+
+    <ImageView
+        android:id="@+id/down_button"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        app:layout_constraintHorizontal_bias="0.01"
+        app:layout_constraintVertical_bias="0.63"
+        android:src="@drawable/downbutton"
+        android:contentDescription="@string/drop_button"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"/>
+
+    <ImageView
+        android:id="@+id/shift_button"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        app:layout_constraintHorizontal_bias="0.99"
+        app:layout_constraintVertical_bias="0.63"
+        android:src="@drawable/shiftbutton"
+        android:contentDescription="@string/shift_button"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"/>
+
+    <ImageView
+        android:id="@+id/resetscore"
+        android:layout_width="45dp"
+        android:layout_height="45dp"
+        android:layout_marginStart="340dp"
+        android:layout_marginTop="600dp"
+        android:src="@drawable/resetscore"
+        android:contentDescription="@string/reset_score"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"/>
+
+    <ImageView
+        android:id="@+id/itemclear4line_imageview"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        app:layout_constraintHorizontal_bias="0.3"
+        app:layout_constraintVertical_bias="0.79"
+        android:src="@drawable/clear4line"
+        android:contentDescription="@string/itemclear4line_imageview_description"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"/>
+
+    <TextView
+        android:id="@+id/itemclear4line_count_text_view"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/itemclear4line_count"
+        android:textSize="11sp"
+        app:layout_constraintBottom_toBottomOf="@id/itemclear4line_imageview"
+        app:layout_constraintEnd_toEndOf="@id/itemclear4line_imageview"
+        android:layout_marginBottom="2dp"
+        android:layout_marginEnd="2dp"/>
+
+</androidx.constraintlayout.widget.ConstraintLayout>
