@@ -16,7 +16,7 @@ class MainActivity : AppCompatActivity() {
 
     private var currentLevelIndex: Int = 0
 
-    private lateinit var itemclear4lineImageView: ImageView //道具相关
+    private lateinit var itemclear4lineImageView: ImageView //道具相关啊
     private lateinit var itemclear4lineCountTextView: TextView //道具相关
     private lateinit var resetscoreImageView: ImageView //重置功能
     private lateinit var leftImageView: ImageView

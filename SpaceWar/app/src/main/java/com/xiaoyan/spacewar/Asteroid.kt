@@ -15,7 +15,7 @@ class Asteroid(private val bitmap: Bitmap, var x: Float, var y: Float, var healt
     private val matrix = Matrix()
     //以下为绘制陨石上血量显示功能
     private val healthPaint = Paint().apply {
-        textSize = 40f  // 根据你的需要调整文本大小
+        textSize = 40f  // 根据你的需要调整文本大小啊
         color = Color.WHITE  // 你可以选择其他颜色来表示血量
     }
     //绘制结束
