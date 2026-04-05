@@ -517,12 +517,33 @@ fun AddSourceView(
                                 )
                             }
                         }
+                        
+                        // --- 新增：选中所有新闻源按钮 ---
+                        Button(
+                            onClick = { 
+                                val allSourceIds = allAvailableSources.map { it.first }.toSet()
+                                SubscriptionManager.addAllSubscriptions(allSourceIds)
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.secondary // 使用次要颜色使其醒目且与确定按钮区分
+                            )
+                        ) {
+                            Text("选中所有新闻源", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        // --- 原有的确定按钮 ---
                         Button(
                             onClick = { if (isFirstTimeSetup) onComplete() else navController.popBackStack() },
-                            modifier = Modifier.fillMaxWidth().padding(16.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp)
+                                .padding(bottom = 16.dp),
                             enabled = subscribedSources.isNotEmpty()
                         ) {
-                            Text("确定")
+                            Text("确定", fontSize = 16.sp)
                         }
                     }
                 }
@@ -575,6 +596,12 @@ object SubscriptionManager {
 
     fun addSubscription(sourceId: String) {
         _subscribedSources.value = _subscribedSources.value + sourceId
+        saveSubscribedSources()
+    }
+
+    // --- 新增：批量添加订阅方法 ---
+    fun addAllSubscriptions(sourceIds: Set<String>) {
+        _subscribedSources.value = _subscribedSources.value + sourceIds
         saveSubscribedSources()
     }
 
