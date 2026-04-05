@@ -34,11 +34,11 @@ import kotlin.math.min
 
 enum class ArticleFilterMode { Unread, Read }
 
-// --- 新增：用于包装搜索结果的数据类 ---
 data class SearchResult(
     val articleWithSource: ArticleWithSource,
     val isTitleMatch: Boolean = false,
     val isContentMatch: Boolean = false,
+    val titleSnippet: AnnotatedString? = null,
     val contentSnippet: AnnotatedString? = null
 )
 
@@ -101,13 +101,12 @@ private fun ArticleListContent(
     var downloadProgress by remember { mutableStateOf(0.0f) }
     var downloadProgressText by remember { mutableStateOf("") }
 
-    // --- 新增：折叠状态管理 ---
-    // 记录被折叠的日期（timestamp）
+    // --- 折叠状态管理 ---
     var collapsedGroups by remember { mutableStateOf(setOf<String>()) }
 
     val primaryColor = MaterialTheme.colorScheme.primary
 
-    // --- 修改：过滤逻辑扩展到正文并生成 SearchResult ---
+    // 过滤逻辑扩展到正文和标题，并在组内进行排序
     val filteredArticles = remember(articlesWithSource, filterMode, searchText, isSearching) {
         val baseList = if (searchText.isNotBlank() && isSearching) {
             articlesWithSource.mapNotNull { item ->
@@ -115,7 +114,11 @@ private fun ArticleListContent(
                 val contentMatch = item.article.articleContent.contains(searchText, ignoreCase = true)
 
                 if (titleMatch || contentMatch) {
-                    val snippet = if (contentMatch) {
+                    val tSnippet = if (titleMatch) {
+                        highlightFullText(item.article.topic, searchText, primaryColor)
+                    } else null
+                    
+                    val cSnippet = if (contentMatch) {
                         generateSnippet(item.article.articleContent, searchText, primaryColor)
                     } else null
 
@@ -123,12 +126,13 @@ private fun ArticleListContent(
                         articleWithSource = item,
                         isTitleMatch = titleMatch,
                         isContentMatch = contentMatch,
-                        contentSnippet = snippet
+                        titleSnippet = tSnippet,
+                        contentSnippet = cSnippet
                     )
                 } else {
                     null
                 }
-            }
+            }.sortedByDescending { it.isTitleMatch } // 组内：按标题匹配优先排序
         } else {
             articlesWithSource.filter {
                 if (filterMode == ArticleFilterMode.Unread) !it.article.isRead else it.article.isRead
@@ -137,6 +141,19 @@ private fun ArticleListContent(
             }
         }
         baseList.groupBy { it.articleWithSource.article.timestamp }
+    }
+
+    // --- 新增：对日期分组（key）进行多级排序 ---
+    val sortedTimestamps = remember(filteredArticles) {
+        filteredArticles.keys.sortedWith(
+            compareByDescending<String> { timestamp ->
+                // 第一级：该日期组内是否有标题匹配的文章？(true 排在 false 前面)
+                filteredArticles[timestamp]?.any { it.isTitleMatch } == true
+            }.thenByDescending { timestamp ->
+                // 第二级：按照日期降序排列
+                timestamp
+            }
+        )
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -194,7 +211,8 @@ private fun ArticleListContent(
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        filteredArticles.keys.sortedDescending().forEach { timestamp ->
+                        // --- 修改：使用多级排序后的 sortedTimestamps ---
+                        sortedTimestamps.forEach { timestamp ->
                             val groupArticles = filteredArticles[timestamp] ?: emptyList()
                             val isCollapsed = collapsedGroups.contains(timestamp)
 
@@ -242,7 +260,7 @@ private fun ArticleListContent(
                                                 navController.navigate("article_container/${item.article.id}/${item.sourceName}/$fromContext")
                                             }
 
-                                            // --- 新增：点击时检查并下载图片 ---
+                                            // 点击时检查并下载图片
                                             if (item.article.images.isEmpty() || updateManager.checkIfImagesExistForArticle(item.article.timestamp, item.article.images)) {
                                                 navigateAction()
                                             } else {
@@ -299,7 +317,25 @@ private fun ArticleListContent(
     }
 }
 
-// --- 新增：生成带有高亮的节选段落 ---
+// 为标题生成高亮（不截断文本）
+private fun highlightFullText(text: String, query: String, highlightColor: Color): AnnotatedString {
+    val index = text.indexOf(query, ignoreCase = true)
+    if (index == -1) return AnnotatedString(text)
+
+    return buildAnnotatedString {
+        append(text)
+        addStyle(
+            style = SpanStyle(
+                color = highlightColor,
+                fontWeight = FontWeight.Bold
+            ),
+            start = index,
+            end = index + query.length
+        )
+    }
+}
+
+// 生成带有高亮的节选段落
 private fun generateSnippet(content: String, query: String, highlightColor: Color): AnnotatedString {
     val cleanContent = content.replace("\n", " ").replace(Regex("\\s+"), " ")
     val index = cleanContent.indexOf(query, ignoreCase = true)
@@ -379,7 +415,7 @@ private fun SegmentedControl(
     }
 }
 
-// --- 修改：接收 SearchResult 并展示正文标记和节选 ---
+// --- 修改：展示高亮标题 ---
 @Composable
 private fun ArticleRowCard(
     searchResult: SearchResult,
@@ -435,14 +471,27 @@ private fun ArticleRowCard(
                 Spacer(modifier = Modifier.height(4.dp))
             }
 
-            Text(
-                text = article.topic,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = if (article.isRead) Color.Gray else MaterialTheme.colorScheme.onSurface,
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis
-            )
+            // 优先显示高亮标题
+            if (isSearching && searchResult.titleSnippet != null) {
+                Text(
+                    text = searchResult.titleSnippet,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    // 如果已读，可以稍微降低透明度来区分
+                    color = if (article.isRead) Color.Gray else MaterialTheme.colorScheme.onSurface,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis
+                )
+            } else {
+                Text(
+                    text = article.topic,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (article.isRead) Color.Gray else MaterialTheme.colorScheme.onSurface,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
 
             // 显示正文高亮节选
             if (isSearching && searchResult.isContentMatch && searchResult.contentSnippet != null) {
