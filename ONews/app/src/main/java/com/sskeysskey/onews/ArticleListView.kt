@@ -13,6 +13,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -92,9 +93,10 @@ private fun ArticleListContent(
     viewModel: NewsViewModel,
     isAllArticles: Boolean
 ) {
-    var filterMode by remember { mutableStateOf(ArticleFilterMode.Unread) }
-    var searchText by remember { mutableStateOf("") }
-    var isSearching by remember { mutableStateOf(false) }
+    // 使用 rememberSaveable 保持状态
+    var filterMode by rememberSaveable { mutableStateOf(ArticleFilterMode.Unread) }
+    var searchText by rememberSaveable { mutableStateOf("") }
+    var isSearching by rememberSaveable { mutableStateOf(false) }
 
     // --- 焦点与键盘控制 ---
     val focusRequester = remember { FocusRequester() }
