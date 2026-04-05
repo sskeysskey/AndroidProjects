@@ -66,114 +66,130 @@ fun AudioPlayerView(playerManager: AudioPlayerManager) {
             .padding(8.dp),
         elevation = CardDefaults.cardElevation(8.dp)
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-
-            // TTS 不可用时显示提示
-            if (!ttsReady) {
-                Text(
-                    "⚠️ 中文语音引擎未就绪，请在系统设置中安装中文语音数据",
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
-            }
-
-            // 片段指示器（仅多片段时显示）
-            if (chunkInfo.isNotEmpty()) {
-                Text(
-                    "片段 $chunkInfo",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(bottom = 4.dp)
-                )
-            }
-
-            // 进度条和时间
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(currentTime, style = MaterialTheme.typography.bodySmall)
-                Slider(
-                    value = progress,
-                    onValueChange = { playerManager.seek(it) },
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(horizontal = 8.dp)
-                )
-                Text(duration, style = MaterialTheme.typography.bodySmall)
-            }
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // 控制按钮
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceAround,
-                verticalAlignment = Alignment.CenterVertically
+        Box(modifier = Modifier.fillMaxWidth()) {
+            // 右上角的关闭按钮
+            IconButton(
+                onClick = { playerManager.stop() },
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(4.dp)
             ) {
-                // 连播开关
-                IconButton(onClick = { playerManager.setAutoPlayEnabled(!isAutoPlayEnabled) }) {
-                    Icon(
-                        imageVector = if (isAutoPlayEnabled) Icons.Default.Repeat else Icons.Default.RepeatOne,
-                        contentDescription = "Toggle Autoplay",
-                        tint = if (isAutoPlayEnabled) MaterialTheme.colorScheme.primary else Color.Gray
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = "Close Audio Player",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            Column(modifier = Modifier.padding(16.dp)) {
+
+                // TTS 不可用时显示提示
+                if (!ttsReady) {
+                    Text(
+                        "⚠️ 中文语音引擎未就绪，请在系统设置中安装中文语音数据",
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(bottom = 8.dp)
                     )
                 }
 
-                // 倍速选择按钮 + 下拉菜单
-                Box {
-                    TextButton(onClick = { showSpeedMenu = true }) {
-                        Text(
-                            text = "${playbackRate}x",
-                            fontWeight = FontWeight.Bold,
-                            color = if (playbackRate != 1.0f)
-                                MaterialTheme.colorScheme.primary
-                            else
-                                MaterialTheme.colorScheme.onSurface
+                // 片段指示器（仅多片段时显示）
+                if (chunkInfo.isNotEmpty()) {
+                    Text(
+                        "片段 $chunkInfo",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 4.dp)
+                    )
+                }
+
+                // 进度条和时间
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(currentTime, style = MaterialTheme.typography.bodySmall)
+                    Slider(
+                        value = progress,
+                        onValueChange = { playerManager.seek(it) },
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(horizontal = 8.dp)
+                    )
+                    Text(duration, style = MaterialTheme.typography.bodySmall)
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // 控制按钮
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceAround,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // 连播开关
+                    IconButton(onClick = { playerManager.setAutoPlayEnabled(!isAutoPlayEnabled) }) {
+                        Icon(
+                            imageVector = if (isAutoPlayEnabled) Icons.Default.Repeat else Icons.Default.RepeatOne,
+                            contentDescription = "Toggle Autoplay",
+                            tint = if (isAutoPlayEnabled) MaterialTheme.colorScheme.primary else Color.Gray
                         )
                     }
-                    DropdownMenu(
-                        expanded = showSpeedMenu,
-                        onDismissRequest = { showSpeedMenu = false }
+
+                    // 倍速选择按钮 + 下拉菜单
+                    Box {
+                        TextButton(onClick = { showSpeedMenu = true }) {
+                            Text(
+                                text = "${playbackRate}x",
+                                fontWeight = FontWeight.Bold,
+                                color = if (playbackRate != 1.0f)
+                                    MaterialTheme.colorScheme.primary
+                                else
+                                    MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = showSpeedMenu,
+                            onDismissRequest = { showSpeedMenu = false }
+                        ) {
+                            listOf(1.0f, 1.25f, 1.5f, 1.75f, 2.0f).forEach { rate ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            text = "${rate}x",
+                                            fontWeight = if (rate == playbackRate) FontWeight.Bold else FontWeight.Normal,
+                                            color = if (rate == playbackRate)
+                                                MaterialTheme.colorScheme.primary
+                                            else
+                                                MaterialTheme.colorScheme.onSurface
+                                        )
+                                    },
+                                    onClick = {
+                                        playerManager.setPlaybackRate(rate)
+                                        showSpeedMenu = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    // 播放/暂停
+                    IconButton(
+                        onClick = { playerManager.playPause() },
+                        enabled = !isSynthesizing && ttsReady,
+                        modifier = Modifier.size(56.dp)
                     ) {
-                        listOf(1.0f, 1.25f, 1.5f, 1.75f, 2.0f).forEach { rate ->
-                            DropdownMenuItem(
-                                text = {
-                                    Text(
-                                        text = "${rate}x",
-                                        fontWeight = if (rate == playbackRate) FontWeight.Bold else FontWeight.Normal,
-                                        color = if (rate == playbackRate)
-                                            MaterialTheme.colorScheme.primary
-                                        else
-                                            MaterialTheme.colorScheme.onSurface
-                                    )
-                                },
-                                onClick = {
-                                    playerManager.setPlaybackRate(rate)
-                                    showSpeedMenu = false
-                                }
+                        if (isSynthesizing) {
+                            CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                        } else {
+                            Icon(
+                                imageVector = if (isPlaying) Icons.Default.PauseCircleFilled else Icons.Default.PlayCircleFilled,
+                                contentDescription = "Play/Pause",
+                                modifier = Modifier.fillMaxSize()
                             )
                         }
                     }
-                }
 
-                // 播放/暂停
-                IconButton(
-                    onClick = { playerManager.playPause() },
-                    enabled = !isSynthesizing && ttsReady,
-                    modifier = Modifier.size(56.dp)
-                ) {
-                    if (isSynthesizing) {
-                        CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                    } else {
-                        Icon(
-                            imageVector = if (isPlaying) Icons.Default.PauseCircleFilled else Icons.Default.PlayCircleFilled,
-                            contentDescription = "Play/Pause",
-                            modifier = Modifier.fillMaxSize()
-                        )
+                    // 下一篇文章
+                    IconButton(onClick = { playerManager.onNextRequested() }) {
+                        Icon(Icons.Default.SkipNext, contentDescription = "Next")
                     }
-                }
-
-                // 下一篇文章
-                IconButton(onClick = { playerManager.onNextRequested() }) {
-                    Icon(Icons.Default.SkipNext, contentDescription = "Next")
                 }
             }
         }

@@ -5,7 +5,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -43,7 +43,9 @@ fun ArticleDetail(
     val paragraphs = remember(article.articleContent) {
         article.articleContent.split("\n").filter { it.isNotBlank() }
     }
-    val isPlaying by audioPlayerManager.isPlaying.collectAsState()
+    
+    // 监听播放器是否处于激活状态（包含播放、暂停、缓冲等）
+    val isPlaybackActive by audioPlayerManager.isPlaybackActive.collectAsState()
 
     val context = LocalContext.current
 
@@ -128,16 +130,19 @@ fun ArticleDetail(
                 },
                 actions = {
                     IconButton(onClick = {
-                        if (isPlaying) {
+                        if (isPlaybackActive) {
+                            // 如果当前处于激活状态，点击则彻底关闭音频播放
                             audioPlayerManager.stop()
                         } else {
+                            // 否则开始播放
                             audioPlayerManager.startPlayback(article.articleContent, article.topic)
                         }
                     }) {
                         Icon(
-                            Icons.AutoMirrored.Filled.VolumeUp,
-                            contentDescription = "Play Audio",
-                            tint = if (isPlaying) MaterialTheme.colorScheme.primary else LocalContentColor.current
+                            imageVector = Icons.Default.Headphones,
+                            contentDescription = "Toggle Audio",
+                            // 激活状态下图标变为主题色，否则为默认颜色
+                            tint = if (isPlaybackActive) MaterialTheme.colorScheme.primary else LocalContentColor.current
                         )
                     }
                     IconButton(onClick = { /* 分享逻辑 */ }) {
