@@ -613,26 +613,13 @@ class AudioPlayerManager(private val context: Context) : ViewModel(), TextToSpee
     // --- 文本预处理逻辑 ---
 
     private fun preprocessText(text: String): String {
-        val textWithoutCommas = removeCommasFromNumbers(text)
-        val normalized = normalizeDash(textWithoutCommas)
-        val decimalBeforePercentWordFixed = insertDotForDecimalBeforePercentageWords(normalized)
-        val processedSpecialTerms = processEnglishText(decimalBeforePercentWordFixed)
-        val withYearFixed = replaceYearMentionsForChinese(processedSpecialTerms)
-
-        val pattern =
-            "(?<!年)([\\u4e00-\\u9fa5])(\\s*[A-Za-z]+\\s*)([\\u4e00-\\u9fa5])(?!年)".toRegex()
-        return pattern.replace(withYearFixed, "$1, $2, $3")
+        return normalizeDash(text)
     }
 
-    private fun removeCommasFromNumbers(text: String): String {
-        val pattern = "(\\d),(\\d{3})".toRegex()
-        var result = text
-        while (pattern.containsMatchIn(result)) {
-            result = pattern.replace(result, "$1$2")
-        }
-        return result
-    }
-
+    /**
+    * 统一各种 Unicode 破折号/波浪号为标准短横线，
+    * 避免 TTS 遇到生僻字符时出现异常。
+    */
     private fun normalizeDash(text: String): String {
         val dashes = listOf("--", "—", "―", "–", "－", "‑", "‒", "〜", "~", "～", "----")
         var t = text
@@ -641,128 +628,5 @@ class AudioPlayerManager(private val context: Context) : ViewModel(), TextToSpee
             t = t.replace("--", "-")
         }
         return t
-    }
-
-    private fun insertDotForDecimalBeforePercentageWords(text: String): String {
-        val pattern = "(?<!\\d)(\\d+)\\.(\\d+)\\s*(个百分点|百分比|百分点)".toRegex()
-        return pattern.replace(text) { matchResult ->
-            val (intPart, fracPart, unit) = matchResult.destructured
-            "${intPart}点${fracPart}${unit}"
-        }
-    }
-
-    private fun processEnglishText(input: String): String {
-        var processed = input
-            .replace("\u201C", "").replace("\u201D", "").replace("\"", "")
-
-        processed = normalizeDash(processed)
-
-        val ageRangePattern =
-            "(?<!\\d)(\\d{1,2})\\s*-\\s*(\\d{1,2})\\s*(岁|岁龄|年龄段)".toRegex()
-        processed = ageRangePattern.replace(processed) {
-            val (lStr, rStr, unit) = it.destructured
-            val l = lStr.toIntOrNull()
-            val r = rStr.toIntOrNull()
-            if (l != null && r != null && l in 10..99 && r in 10..99) {
-                "${toChineseUpperForAge(l)}到${toChineseUpperForAge(r)}$unit"
-            } else {
-                it.value
-            }
-        }
-
-        val academicYearPattern =
-            "(?<!\\d)(\\d{4})\\s*-\\s*(\\d{2})(?=\\s*学年)".toRegex()
-        processed = academicYearPattern.replace(processed) {
-            val (leftYear, rightYear) = it.destructured
-            "${formatDigitsToChinesePerChar(leftYear)}到${formatDigitsToChinesePerChar(rightYear)}"
-        }
-
-        val decadeRangePattern =
-            "(?<!\\d)(\\d{4})\\s*-\\s*(\\d{2})(?=\\s*年代)".toRegex()
-        processed = decadeRangePattern.replace(processed) {
-            val (leftYear, rightSuffix) = it.destructured
-            "${formatDigitsToChinesePerChar(leftYear)}到${formatDigitsToChinesePerChar(rightSuffix)}"
-        }
-
-        val units = "[人名位个只辆架件次年条份所家台篇场例天月周小时分钟秒]"
-        val numberRangeWithUnitPattern =
-            "(?<!\\d)(\\d{1,6})\\s*-\\s*(\\d{1,6})\\s*($units)".toRegex()
-        processed = numberRangeWithUnitPattern.replace(processed) {
-            val (left, right, unit) = it.destructured
-            val l = left.toIntOrNull()
-            val r = right.toIntOrNull()
-            if (l != null && r != null) {
-                "${readChineseNumber(l)}到${readChineseNumber(r)}$unit"
-            } else {
-                it.value
-            }
-        }
-
-        val generalRangePattern =
-            "(?<!\\d)(\\d{1,6})\\s*-\\s*(\\d{1,6})(?!\\d)".toRegex()
-        processed = generalRangePattern.replace(processed, "$1到$2")
-
-        val replacements = mapOf(
-            "API" to "A.P.I", "URL" to "U.R.L", "HTTP" to "H.T.T.P", "JSON" to "Jason",
-            "HTML" to "H.T.M.L", "CSS" to "C.S.S", "JS" to "J.S", "AI" to "A.I",
-            "OpenAI" to "Open.A.I", "SDK" to "S.D.K", "iOS" to "i O S", "PSA" to "P.S.A",
-            "Jeep" to "吉普", "EV" to "电动车", "iPhone" to "i Phone", "iPad" to "i Pad",
-            "macOS" to "mac O S", "UI" to "U.I", "GUI" to "G.U.I", "CLI" to "C.L.I",
-            "SQL" to "S.Q.L", "NASA" to "NASA", "JPEG" to "J.PEG", "PNG" to "P.N.G",
-            "PDF" to "P.D.F", "ID" to "I.D", "vs" to "对阵", "etc" to "等等",
-            "i.e" to "也就是说", "e.g" to "举例来说", "&" to "和", "+" to "加",
-            "=" to "等于", "@" to "at", "~" to "到", "/" to "每", "DJI" to "大疆",
-            "Insta360" to "Insta三六零", "Airbnb" to "Air.B.N.B", "参加" to "餐加",
-            "K-12" to "K十二", "K12" to "K十二"
-        )
-        replacements.forEach { (key, value) ->
-            processed = processed.replace(key, value)
-        }
-
-        return processed
-    }
-
-    private fun replaceYearMentionsForChinese(text: String): String {
-        var result = text
-        val rangeWithYearPattern =
-            "(?<!\\d)(\\d{4})(?:\\s*年)?\\s*-\\s*(\\d{4})(?=\\s*(?:年|年代))".toRegex()
-        result = rangeWithYearPattern.replace(result) {
-            val (leftYear, rightYear) = it.destructured
-            "${formatDigitsToChinesePerChar(leftYear)}到${formatDigitsToChinesePerChar(rightYear)}"
-        }
-
-        val singleYearPattern = "(?<!\\d)(\\d{4})(?=\\s*(?:年|年代))".toRegex()
-        result = singleYearPattern.replace(result) {
-            formatDigitsToChinesePerChar(it.groupValues[1])
-        }
-        return result
-    }
-
-    private fun formatDigitsToChinesePerChar(digits: String): String {
-        val map = mapOf(
-            '0' to "零", '1' to "一", '2' to "二", '3' to "三", '4' to "四",
-            '5' to "五", '6' to "六", '7' to "七", '8' to "八", '9' to "九"
-        )
-        return digits.map { map[it] }.joinToString("")
-    }
-
-    private fun toChineseUpperForAge(n: Int): String {
-        val upper = listOf("零", "壹", "贰", "叁", "肆", "伍", "陆", "柒", "捌", "玖")
-        if (n < 10) return upper[n]
-        val tens = n / 10
-        val ones = n % 10
-        return when {
-            ones == 0 -> if (tens == 1) "十" else upper[tens] + "十"
-            tens == 1 -> "十" + upper[ones]
-            else -> upper[tens] + "十" + upper[ones]
-        }
-    }
-
-    private fun readChineseNumber(n: Int): String {
-        val digits = listOf("零", "一", "二", "三", "四", "五", "六", "七", "八", "九")
-        if (n < 10) return digits[n]
-        if (n < 20) return "十" + if (n % 10 == 0) "" else digits[n % 10]
-        if (n < 100) return digits[n / 10] + "十" + if (n % 10 == 0) "" else digits[n % 10]
-        return n.toString()
     }
 }
