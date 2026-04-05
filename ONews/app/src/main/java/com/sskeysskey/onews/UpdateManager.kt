@@ -136,7 +136,7 @@ class UpdateManager(
             }
 
             if (downloadTasks.isEmpty()) {
-                _syncMessage.value = "已是最新"
+                _syncMessage.value = "当前配置文件已是最新版本"
                 delay(500)
                 return@safelyRunSync
             }
@@ -265,7 +265,7 @@ class UpdateManager(
             }
 
             if (tasksToDownload.isEmpty()) {
-                _syncMessage.value = "新闻清单已是最新。"
+                _syncMessage.value = "新闻源已是最新。"
                 delay(500)
                 return@safelyRunSync
             }
@@ -275,12 +275,12 @@ class UpdateManager(
             tasksToDownload.forEachIndexed { index, info ->
                 _progressText.value = "${index + 1}/$total"
                 _downloadProgress.value = (index + 1).toFloat() / total.toFloat()
-                _syncMessage.value = "正在下载: ${info.name}..."
+                _syncMessage.value = "正在更新配置文件..."
                 downloadSingleFile(info.name)
             }
 
             _isDownloading.value = false
-            _syncMessage.value = "清单更新完成！"
+            _syncMessage.value = "新闻源准备就绪！"
             _progressText.value = ""
             delay(500)
         }

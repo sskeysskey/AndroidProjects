@@ -68,7 +68,7 @@ fun WelcomeScreen(onComplete: () -> Unit) {
             verticalArrangement = Arrangement.Center
         ) {
             Text(
-                text = "欢迎来到 ONews",
+                text = "欢迎使用 「国外消息」",
                 style = MaterialTheme.typography.displaySmall,
                 fontWeight = FontWeight.Bold,
                 color = Color.White
@@ -78,7 +78,7 @@ fun WelcomeScreen(onComplete: () -> Unit) {
                 text = if (hasLocal) {
                     "检测到本地已有数据\n您可以直接开始添加新闻源"
                 } else {
-                    "点击右下方按钮\n开始添加您感兴趣的新闻源"
+                    "点击右下方按钮\n添加您感兴趣的新闻源"
                 },
                 style = MaterialTheme.typography.headlineSmall,
                 color = Color.White.copy(alpha = 0.8f),
@@ -87,7 +87,7 @@ fun WelcomeScreen(onComplete: () -> Unit) {
             if (!hasLocal) {
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    "若服务器未启动，首次可能拉取失败，您可稍后点击刷新重试。",
+                    "若出现连接服务器异常等报错，可点击左下角的刷新按钮重试。",
                     color = Color.White.copy(alpha = 0.75f),
                     fontSize = 12.sp
                 )
