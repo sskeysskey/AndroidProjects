@@ -11,15 +11,23 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddCircle
 import androidx.compose.material.icons.filled.RemoveCircle
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -56,11 +64,26 @@ fun SourceList(
 
     val sources by viewModel.sources.collectAsStateWithLifecycle()
     val totalUnreadCount by viewModel.totalUnreadCount.collectAsStateWithLifecycle()
+    val allArticles by viewModel.allArticlesSortedForDisplay.collectAsStateWithLifecycle()
+    
     val isSyncing by resourceManager.isSyncing.collectAsState()
     val syncMessage by resourceManager.syncMessage.collectAsState()
 
     var showErrorAlert by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
+
+    // --- 搜索状态 ---
+    var isSearching by remember { mutableStateOf(false) }
+    var searchText by remember { mutableStateOf("") }
+    val focusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
+    var collapsedGroups by remember { mutableStateOf(setOf<String>()) }
+    val primaryColor = MaterialTheme.colorScheme.primary
+
+    // --- 图片下载状态 ---
+    var isDownloadingImages by remember { mutableStateOf(false) }
+    var downloadProgress by remember { mutableStateOf(0.0f) }
+    var downloadProgressText by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
         viewModel.loadNews()
@@ -80,6 +103,40 @@ fun SourceList(
         }
     }
 
+    // 搜索过滤逻辑
+    val filteredArticles = remember(allArticles, searchText, isSearching) {
+        if (searchText.isNotBlank() && isSearching) {
+            allArticles.mapNotNull { item ->
+                val titleMatch = item.article.topic.contains(searchText, ignoreCase = true)
+                val contentMatch = item.article.articleContent.contains(searchText, ignoreCase = true)
+
+                if (titleMatch || contentMatch) {
+                    val tSnippet = if (titleMatch) highlightFullText(item.article.topic, searchText, primaryColor) else null
+                    val cSnippet = if (contentMatch) generateSnippet(item.article.articleContent, searchText, primaryColor) else null
+
+                    SearchResult(
+                        articleWithSource = item,
+                        isTitleMatch = titleMatch,
+                        isContentMatch = contentMatch,
+                        titleSnippet = tSnippet,
+                        contentSnippet = cSnippet
+                    )
+                } else null
+            }.sortedByDescending { it.isTitleMatch }
+             .groupBy { it.articleWithSource.article.timestamp }
+        } else {
+            emptyMap()
+        }
+    }
+
+    val sortedTimestamps = remember(filteredArticles) {
+        filteredArticles.keys.sortedWith(
+            compareByDescending<String> { timestamp ->
+                filteredArticles[timestamp]?.any { it.isTitleMatch } == true
+            }.thenByDescending { it }
+        )
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         AppBackgroundImage()
         Box(modifier = Modifier.fillMaxSize().background(WelcomeBackgroundOverlay))
@@ -89,6 +146,15 @@ fun SourceList(
                 TopAppBar(
                     title = {},
                     actions = {
+                        IconButton(onClick = {
+                            isSearching = !isSearching
+                            if (!isSearching) {
+                                searchText = ""
+                                keyboardController?.hide()
+                            }
+                        }) {
+                            Icon(Icons.Default.Search, contentDescription = "Search", tint = Color.White)
+                        }
                         IconButton(onClick = { navController.navigate("add_source/false") }) {
                             Icon(Icons.Default.Add, contentDescription = "Add Source", tint = Color.White)
                         }
@@ -111,36 +177,145 @@ fun SourceList(
             },
             containerColor = Color.Transparent
         ) { paddingValues ->
-            if (sources.isEmpty() && !isSyncing) {
-                Box(
-                    modifier = Modifier.fillMaxSize().padding(paddingValues),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("您还没有订阅任何新闻源", color = Color.White.copy(alpha = 0.9f))
-                        Spacer(Modifier.height(16.dp))
-                        Button(onClick = { navController.navigate("add_source/false") }) {
-                            Text("点击这里添加")
+            if (isSearching) {
+                // 搜索界面
+                Column(modifier = Modifier.padding(paddingValues).fillMaxSize()) {
+                    LaunchedEffect(Unit) {
+                        focusRequester.requestFocus()
+                        keyboardController?.show()
+                    }
+
+                    OutlinedTextField(
+                        value = searchText,
+                        onValueChange = { searchText = it },
+                        label = { Text("搜索所有文章", color = Color.White) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                            .focusRequester(focusRequester),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            focusedBorderColor = Color.White,
+                            unfocusedBorderColor = Color.White.copy(alpha = 0.5f),
+                            focusedLabelColor = Color.White,
+                            unfocusedLabelColor = Color.White.copy(alpha = 0.5f),
+                            cursorColor = Color.White
+                        )
+                    )
+
+                    if (searchText.isNotBlank() && filteredArticles.isEmpty()) {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text("没有匹配的文章", color = Color.White.copy(alpha = 0.7f))
+                        }
+                    } else {
+                        LazyColumn(
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            sortedTimestamps.forEach { timestamp ->
+                                val groupArticles = filteredArticles[timestamp] ?: emptyList()
+                                val isCollapsed = collapsedGroups.contains(timestamp)
+
+                                item {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(Color.White.copy(alpha = 0.1f))
+                                            .clickable {
+                                                collapsedGroups = if (isCollapsed) collapsedGroups - timestamp else collapsedGroups + timestamp
+                                            }
+                                            .padding(horizontal = 8.dp, vertical = 12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "${formatTimestamp(timestamp)} (${groupArticles.size})",
+                                            style = MaterialTheme.typography.titleMedium,
+                                            color = Color.White,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        Icon(
+                                            imageVector = if (isCollapsed) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowUp,
+                                            contentDescription = if (isCollapsed) "展开" else "折叠",
+                                            tint = Color.White
+                                        )
+                                    }
+                                }
+
+                                if (!isCollapsed) {
+                                    items(groupArticles, key = { it.articleWithSource.article.id }) { searchResult ->
+                                        val item = searchResult.articleWithSource
+                                        ArticleRowCard(
+                                            searchResult = searchResult,
+                                            sourceName = item.sourceName,
+                                            isSearching = isSearching,
+                                            onClick = {
+                                                val navigateAction = {
+                                                    navController.navigate("article_container/${item.article.id}/${item.sourceName}/all")
+                                                }
+                                                if (item.article.images.isEmpty() || resourceManager.checkIfImagesExistForArticle(item.article.timestamp, item.article.images)) {
+                                                    navigateAction()
+                                                } else {
+                                                    scope.launch {
+                                                        isDownloadingImages = true
+                                                        downloadProgress = 0f
+                                                        downloadProgressText = "准备中..."
+                                                        try {
+                                                            resourceManager.downloadImagesForArticle(item.article.timestamp, item.article.images) { current, total ->
+                                                                downloadProgress = if (total > 0) current.toFloat() / total else 0f
+                                                                downloadProgressText = "已下载 $current / $total"
+                                                            }
+                                                        } catch (e: Exception) {
+                                                            e.printStackTrace()
+                                                        } finally {
+                                                            isDownloadingImages = false
+                                                            navigateAction()
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
             } else {
-                LazyColumn(modifier = Modifier.padding(paddingValues).padding(horizontal = 16.dp)) {
-                    item {
-                        SourceRow(
-                            name = "ALL",
-                            unreadCount = totalUnreadCount,
-                            onClick = { navController.navigate("all_articles") },
-                            isAll = true
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
+                // 原有的新闻源列表界面
+                if (sources.isEmpty() && !isSyncing) {
+                    Box(
+                        modifier = Modifier.fillMaxSize().padding(paddingValues),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("您还没有订阅任何新闻源", color = Color.White.copy(alpha = 0.9f))
+                            Spacer(Modifier.height(16.dp))
+                            Button(onClick = { navController.navigate("add_source/false") }) {
+                                Text("点击这里添加")
+                            }
+                        }
                     }
-                    items(sources, key = { it.id }) { source ->
-                        SourceRow(
-                            name = source.name,
-                            unreadCount = source.unreadCount,
-                            onClick = { navController.navigate("article_list/${source.name}") }
-                        )
+                } else {
+                    LazyColumn(modifier = Modifier.padding(paddingValues).padding(horizontal = 16.dp)) {
+                        item {
+                            SourceRow(
+                                name = "ALL",
+                                unreadCount = totalUnreadCount,
+                                onClick = { navController.navigate("all_articles") },
+                                isAll = true
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                        }
+                        items(sources, key = { it.id }) { source ->
+                            SourceRow(
+                                name = source.name,
+                                unreadCount = source.unreadCount,
+                                onClick = { navController.navigate("article_list/${source.name}") }
+                            )
+                        }
                     }
                 }
             }
@@ -155,6 +330,30 @@ fun SourceList(
                 text = { Text(errorMessage) },
                 confirmButton = { Button(onClick = { showErrorAlert = false }) { Text("好的") } }
             )
+        }
+
+        // 图片下载遮罩层
+        if (isDownloadingImages) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.75f))
+                    .clickable(enabled = false) {}, 
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("正在加载图片", color = Color.White, style = MaterialTheme.typography.titleMedium)
+                    Spacer(modifier = Modifier.height(16.dp))
+                    LinearProgressIndicator(
+                        progress = { downloadProgress },
+                        modifier = Modifier.fillMaxWidth(0.6f),
+                        color = Color.White,
+                        trackColor = Color.DarkGray
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(downloadProgressText, color = Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.bodySmall)
+                }
+            }
         }
     }
 }

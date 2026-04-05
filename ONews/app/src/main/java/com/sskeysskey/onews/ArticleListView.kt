@@ -335,7 +335,7 @@ private fun ArticleListContent(
 }
 
 // 为标题生成高亮（不截断文本）
-private fun highlightFullText(text: String, query: String, highlightColor: Color): AnnotatedString {
+fun highlightFullText(text: String, query: String, highlightColor: Color): AnnotatedString {
     val index = text.indexOf(query, ignoreCase = true)
     if (index == -1) return AnnotatedString(text)
 
@@ -353,7 +353,7 @@ private fun highlightFullText(text: String, query: String, highlightColor: Color
 }
 
 // 生成带有高亮的节选段落
-private fun generateSnippet(content: String, query: String, highlightColor: Color): AnnotatedString {
+fun generateSnippet(content: String, query: String, highlightColor: Color): AnnotatedString {
     val cleanContent = content.replace("\n", " ").replace(Regex("\\s+"), " ")
     val index = cleanContent.indexOf(query, ignoreCase = true)
     if (index == -1) return AnnotatedString("")
@@ -434,7 +434,7 @@ private fun SegmentedControl(
 
 // --- 修改：展示高亮标题 ---
 @Composable
-private fun ArticleRowCard(
+fun ArticleRowCard(
     searchResult: SearchResult,
     sourceName: String?,
     isSearching: Boolean,
@@ -525,7 +525,7 @@ private fun ArticleRowCard(
     }
 }
 
-private fun formatTimestamp(timestamp: String): String {
+fun formatTimestamp(timestamp: String): String {
     return try {
         val inputFormat = SimpleDateFormat("yyMMdd", Locale.CHINA)
         val date = inputFormat.parse(timestamp)
