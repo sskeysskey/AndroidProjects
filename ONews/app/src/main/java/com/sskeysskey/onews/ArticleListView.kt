@@ -18,6 +18,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -26,8 +29,18 @@ import androidx.navigation.NavController
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Locale
+import kotlin.math.max
+import kotlin.math.min
 
 enum class ArticleFilterMode { Unread, Read }
+
+// --- 新增：用于包装搜索结果的数据类 ---
+data class SearchResult(
+    val articleWithSource: ArticleWithSource,
+    val isTitleMatch: Boolean = false,
+    val isContentMatch: Boolean = false,
+    val contentSnippet: AnnotatedString? = null
+)
 
 // 单一来源的文章列表
 @Composable
@@ -80,7 +93,7 @@ private fun ArticleListContent(
     var searchText by remember { mutableStateOf("") }
     var isSearching by remember { mutableStateOf(false) }
 
-    // --- 新增：图片下载状态 ---
+    // --- 图片下载状态 ---
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val updateManager = remember { UpdateManager(context, coroutineScope) }
@@ -92,17 +105,38 @@ private fun ArticleListContent(
     // 记录被折叠的日期（timestamp）
     var collapsedGroups by remember { mutableStateOf(setOf<String>()) }
 
+    val primaryColor = MaterialTheme.colorScheme.primary
+
+    // --- 修改：过滤逻辑扩展到正文并生成 SearchResult ---
     val filteredArticles = remember(articlesWithSource, filterMode, searchText, isSearching) {
         val baseList = if (searchText.isNotBlank() && isSearching) {
-            articlesWithSource.filter {
-                it.article.topic.contains(searchText, ignoreCase = true)
+            articlesWithSource.mapNotNull { item ->
+                val titleMatch = item.article.topic.contains(searchText, ignoreCase = true)
+                val contentMatch = item.article.articleContent.contains(searchText, ignoreCase = true)
+
+                if (titleMatch || contentMatch) {
+                    val snippet = if (contentMatch) {
+                        generateSnippet(item.article.articleContent, searchText, primaryColor)
+                    } else null
+
+                    SearchResult(
+                        articleWithSource = item,
+                        isTitleMatch = titleMatch,
+                        isContentMatch = contentMatch,
+                        contentSnippet = snippet
+                    )
+                } else {
+                    null
+                }
             }
         } else {
             articlesWithSource.filter {
                 if (filterMode == ArticleFilterMode.Unread) !it.article.isRead else it.article.isRead
+            }.map { 
+                SearchResult(articleWithSource = it) 
             }
         }
-        baseList.groupBy { it.article.timestamp }
+        baseList.groupBy { it.articleWithSource.article.timestamp }
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -143,7 +177,7 @@ private fun ArticleListContent(
                     OutlinedTextField(
                         value = searchText,
                         onValueChange = { searchText = it },
-                        label = { Text("搜索标题关键字") },
+                        label = { Text("搜索标题或正文关键字") },
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp, vertical = 8.dp),
@@ -196,10 +230,12 @@ private fun ArticleListContent(
                             
                             // 如果没有折叠，则显示该日期下的文章列表
                             if (!isCollapsed) {
-                                items(groupArticles, key = { it.article.id }) { item ->
+                                items(groupArticles, key = { it.articleWithSource.article.id }) { searchResult ->
+                                    val item = searchResult.articleWithSource
                                     ArticleRowCard(
-                                        article = item.article,
+                                        searchResult = searchResult,
                                         sourceName = if (isAllArticles) item.sourceName else null,
+                                        isSearching = isSearching,
                                         onClick = {
                                             val fromContext = if (isAllArticles) "all" else "source"
                                             val navigateAction = {
@@ -223,7 +259,7 @@ private fun ArticleListContent(
                                                         e.printStackTrace()
                                                     } finally {
                                                         isDownloadingImages = false
-                                                        navigateAction() // 无论成功失败都跳转
+                                                        navigateAction()
                                                     }
                                                 }
                                             }
@@ -237,13 +273,13 @@ private fun ArticleListContent(
             }
         }
 
-        // --- 新增：图片下载遮罩层 ---
+        // 图片下载遮罩层
         if (isDownloadingImages) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(Color.Black.copy(alpha = 0.75f))
-                    .clickable(enabled = false) {}, // 拦截点击
+                    .clickable(enabled = false) {}, 
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -259,6 +295,37 @@ private fun ArticleListContent(
                     Text(downloadProgressText, color = Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.bodySmall)
                 }
             }
+        }
+    }
+}
+
+// --- 新增：生成带有高亮的节选段落 ---
+private fun generateSnippet(content: String, query: String, highlightColor: Color): AnnotatedString {
+    val cleanContent = content.replace("\n", " ").replace(Regex("\\s+"), " ")
+    val index = cleanContent.indexOf(query, ignoreCase = true)
+    if (index == -1) return AnnotatedString("")
+
+    // 截取关键词前后各一部分字符
+    val start = max(0, index - 20)
+    val end = min(cleanContent.length, index + query.length + 40)
+    
+    val prefix = if (start > 0) "..." else ""
+    val suffix = if (end < cleanContent.length) "..." else ""
+    
+    val snippetText = prefix + cleanContent.substring(start, end) + suffix
+    val queryStartIndex = snippetText.indexOf(query, ignoreCase = true)
+
+    return buildAnnotatedString {
+        append(snippetText)
+        if (queryStartIndex != -1) {
+            addStyle(
+                style = SpanStyle(
+                    color = highlightColor,
+                    fontWeight = FontWeight.Bold
+                ),
+                start = queryStartIndex,
+                end = queryStartIndex + query.length
+            )
         }
     }
 }
@@ -312,12 +379,16 @@ private fun SegmentedControl(
     }
 }
 
+// --- 修改：接收 SearchResult 并展示正文标记和节选 ---
 @Composable
 private fun ArticleRowCard(
-    article: Article,
+    searchResult: SearchResult,
     sourceName: String?,
+    isSearching: Boolean,
     onClick: () -> Unit
 ) {
+    val article = searchResult.articleWithSource.article
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -328,14 +399,42 @@ private fun ArticleRowCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
-            sourceName?.let {
-                Text(
-                    text = it.replace("_", " "),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color.Gray
-                )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (sourceName != null) {
+                    Text(
+                        text = sourceName.replace("_", " "),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.Gray
+                    )
+                } else {
+                    Spacer(modifier = Modifier.width(1.dp))
+                }
+
+                // 如果是搜索状态且命中了正文，显示“正文”标记
+                if (isSearching && searchResult.isContentMatch) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.secondaryContainer,
+                        shape = RoundedCornerShape(4.dp),
+                        modifier = Modifier.padding(start = 8.dp)
+                    ) {
+                        Text(
+                            text = "正文",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+            }
+            
+            if (sourceName != null) {
                 Spacer(modifier = Modifier.height(4.dp))
             }
+
             Text(
                 text = article.topic,
                 style = MaterialTheme.typography.titleMedium,
@@ -344,6 +443,18 @@ private fun ArticleRowCard(
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis
             )
+
+            // 显示正文高亮节选
+            if (isSearching && searchResult.isContentMatch && searchResult.contentSnippet != null) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = searchResult.contentSnippet,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
     }
 }
