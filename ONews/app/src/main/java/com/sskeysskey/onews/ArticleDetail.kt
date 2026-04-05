@@ -1,19 +1,33 @@
 package com.sskeysskey.onews
 
+import android.content.Intent
+import android.widget.Toast
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ChatBubble
+import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Headphones
+import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
@@ -46,10 +60,20 @@ fun ArticleDetail(
     
     // 监听播放器是否处于激活状态（包含播放、暂停、缓冲等）
     val isPlaybackActive by audioPlayerManager.isPlaybackActive.collectAsState()
-
     val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
 
-    // 构建图文交织的内容列表
+    // 控制分享弹窗和微信引导弹窗的状态
+    var showShareSheet by remember { mutableStateOf(false) }
+    var showWeChatGuide by remember { mutableStateOf(false) }
+
+    // 准备分享的文本：前7段 + iOS同款后缀
+    val textToShare = remember(paragraphs) {
+        val topParagraphs = paragraphs.take(7).joinToString("\n\n")
+        val footer = "\n\n...\n\n阅读全文请前往Google Play免费下载“国外消息“APP"
+        topParagraphs + footer
+    }
+
     val contentItems = remember(article.id) {
         val documentsDirectory = context.filesDir
         val imageDir = File(documentsDirectory, "news_images_${article.timestamp}")
@@ -145,7 +169,12 @@ fun ArticleDetail(
                             tint = if (isPlaybackActive) MaterialTheme.colorScheme.primary else LocalContentColor.current
                         )
                     }
-                    IconButton(onClick = { /* 分享逻辑 */ }) {
+                    IconButton(onClick = { 
+                        // 1. 复制内容到剪贴板
+                        clipboardManager.setText(AnnotatedString(textToShare))
+                        // 2. 弹出分享菜单
+                        showShareSheet = true
+                    }) {
                         Icon(Icons.Default.Share, contentDescription = "Share")
                     }
                 }
@@ -204,5 +233,128 @@ fun ArticleDetail(
             // 当音频播放面板可见时，增加额外的底部间距，避免内容和按钮被遮挡
             Spacer(modifier = Modifier.height(if (isAudioPlayerVisible) 200.dp else 24.dp))
         }
+    }
+
+    // 1. 自定义分享菜单 BottomSheet
+    if (showShareSheet) {
+        ModalBottomSheet(onDismissRequest = { showShareSheet = false }) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 32.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text("分享至", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(24.dp))
+                
+                Row(
+                    horizontalArrangement = Arrangement.Center,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    // 微信按钮
+                    ShareIconBtn(
+                        icon = Icons.Default.ChatBubble, 
+                        color = Color(0xFF4CAF50), 
+                        title = "微信"
+                    ) {
+                        showShareSheet = false
+                        showWeChatGuide = true
+                    }
+                    
+                    Spacer(modifier = Modifier.width(40.dp))
+                    
+                    // 更多按钮 (调用系统分享)
+                    ShareIconBtn(
+                        icon = Icons.Default.MoreHoriz, 
+                        color = Color.Gray, 
+                        title = "更多"
+                    ) {
+                        showShareSheet = false
+                        val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                            putExtra(Intent.EXTRA_TEXT, textToShare)
+                            type = "text/plain"
+                        }
+                        val shareIntent = Intent.createChooser(sendIntent, "分享至")
+                        context.startActivity(shareIntent)
+                    }
+                }
+            }
+        }
+    }
+
+    // 2. 微信手动粘贴引导页 BottomSheet
+    if (showWeChatGuide) {
+        ModalBottomSheet(onDismissRequest = { showWeChatGuide = false }) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp, vertical = 16.dp)
+                    .padding(bottom = 32.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Icon(
+                    imageVector = Icons.Default.ContentPaste,
+                    contentDescription = "Copied",
+                    tint = Color(0xFF4CAF50),
+                    modifier = Modifier.size(60.dp)
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Text("文章内容已复制", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    "由于微信限制，请手动去微信粘贴文章内容",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.Gray,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(24.dp))
+                Button(
+                    onClick = {
+                        val launchIntent = context.packageManager.getLaunchIntentForPackage("com.tencent.mm")
+                        if (launchIntent != null) {
+                            context.startActivity(launchIntent)
+                        } else {
+                            Toast.makeText(context, "未安装微信", Toast.LENGTH_SHORT).show()
+                        }
+                        showWeChatGuide = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50))
+                ) {
+                    Text("打开微信")
+                }
+            }
+        }
+    }
+}
+
+// 辅助按钮视图
+@Composable
+fun ShareIconBtn(icon: ImageVector, color: Color, title: String, action: () -> Unit) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .clickable(onClick = action)
+            .padding(8.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(60.dp)
+                .clip(CircleShape)
+                .background(color.copy(alpha = 0.1f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = title,
+                tint = color,
+                modifier = Modifier.size(28.dp)
+            )
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = title,
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.Medium
+        )
     }
 }
