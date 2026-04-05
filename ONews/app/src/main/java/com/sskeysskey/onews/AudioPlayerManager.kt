@@ -3,6 +3,7 @@ package com.sskeysskey.onews
 import android.annotation.SuppressLint
 import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
@@ -26,7 +27,6 @@ import kotlinx.coroutines.launch
 import java.io.File
 import java.util.Locale
 import java.util.UUID
-import android.content.Intent
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.exoplayer.ExoPlayer
@@ -41,6 +41,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import java.io.FileOutputStream
+import java.io.SequenceInputStream
+import java.util.Collections
 
 @Composable
 fun AudioPlayerView(playerManager: AudioPlayerManager) {
@@ -51,12 +54,24 @@ fun AudioPlayerView(playerManager: AudioPlayerManager) {
     val duration by playerManager.durationString.collectAsState()
     val isAutoPlayEnabled by playerManager.isAutoPlayEnabled
     val playbackRate by playerManager.playbackRate
+    val ttsReady by playerManager.isTtsReady.collectAsState()
 
     Card(
         modifier = Modifier.fillMaxWidth().padding(8.dp),
         elevation = CardDefaults.cardElevation(8.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
+
+            // TTS 不可用时显示提示
+            if (!ttsReady) {
+                Text(
+                    "⚠️ 中文语音引擎未就绪，请在系统设置中安装中文语音数据",
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+            }
+
             // 进度条和时间
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(currentTime, style = MaterialTheme.typography.bodySmall)
@@ -87,7 +102,7 @@ fun AudioPlayerView(playerManager: AudioPlayerManager) {
                 // 播放/暂停
                 IconButton(
                     onClick = { playerManager.playPause() },
-                    enabled = !isSynthesizing,
+                    enabled = !isSynthesizing && ttsReady,
                     modifier = Modifier.size(56.dp)
                 ) {
                     if (isSynthesizing) {
@@ -180,6 +195,10 @@ class AudioPlayerManager(private val context: Context) : ViewModel(), TextToSpee
     private val _playbackRate = mutableFloatStateOf(1.0f)
     val playbackRate: State<Float> = _playbackRate
 
+    // ★ 新增：TTS 就绪状态
+    private val _isTtsReady = MutableStateFlow(false)
+    val isTtsReady = _isTtsReady.asStateFlow()
+
     // --- 回调 ---
     var onNextRequested: () -> Unit = {}
     var onPlaybackFinished: () -> Unit = {}
@@ -203,20 +222,55 @@ class AudioPlayerManager(private val context: Context) : ViewModel(), TextToSpee
         }, MoreExecutors.directExecutor())
     }
 
+    // ★ 修改：检查返回值，尝试多种 Locale，不可用时引导安装
     override fun onInit(status: Int) {
         if (status == TextToSpeech.SUCCESS) {
-            // 默认设置为中文，可以根据文本内容动态改变
-            tts?.language = Locale.CHINESE
+            // 尝试 Locale.CHINA (zh_CN)，比 Locale.CHINESE (zh) 更常被 TTS 引擎识别
+            var result = tts?.setLanguage(Locale.CHINA)
+
+            // 如果 zh_CN 不行，退而求其次试 zh_TW
+            if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+                result = tts?.setLanguage(Locale.TAIWAN)
+            }
+
+            // 如果还不行，尝试通用的 zh
+            if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+                result = tts?.setLanguage(Locale("zh"))
+            }
+
+            if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+                println("TTS: 中文语音不可用 (result=$result)，尝试引导安装语音数据...")
+                _isTtsReady.value = false
+
+                // 自动打开 TTS 数据安装界面
+                try {
+                    val installIntent = Intent(TextToSpeech.Engine.ACTION_INSTALL_TTS_DATA)
+                    installIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    context.startActivity(installIntent)
+                } catch (e: Exception) {
+                    println("TTS: 无法打开语音数据安装界面: ${e.message}")
+                }
+            } else {
+                println("TTS: 中文语音初始化成功 (result=$result)")
+                _isTtsReady.value = true
+            }
         } else {
-            println("TTS Initialization failed.")
+            println("TTS: 引擎初始化失败 (status=$status)")
+            _isTtsReady.value = false
         }
     }
 
     // --- 公共控制方法 ---
 
+    // ★ 修改：增加 TTS 就绪检查 + 长文本分段合成
     fun startPlayback(text: String, title: String?) {
         if (text.isBlank()) {
             handleError("文本内容为空，无法播放。")
+            return
+        }
+
+        if (!_isTtsReady.value) {
+            handleError("中文语音引擎未就绪，请先在系统设置中安装中文语音数据。")
             return
         }
 
@@ -229,29 +283,177 @@ class AudioPlayerManager(private val context: Context) : ViewModel(), TextToSpee
             _isPlaybackActive.value = true
 
             val processedText = preprocessText(text)
-            val tempFile = File(context.cacheDir, "tts_audio.wav")
-            val utteranceId = UUID.randomUUID().toString()
 
-            tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                override fun onStart(id: String?) {}
-                override fun onDone(id: String?) {
-                    if (id == utteranceId) {
+            // ★ 获取 TTS 最大输入长度（通常 4000），将长文本分段合成再拼接
+            val maxLen = try {
+                TextToSpeech.getMaxSpeechInputLength()
+            } catch (_: Exception) {
+                4000
+            }
+
+            val chunks = splitTextIntoChunks(processedText, maxLen)
+
+            if (chunks.size == 1) {
+                // 短文本，直接合成
+                synthesizeSingleChunk(chunks[0])
+            } else {
+                // 长文本，逐段合成后拼接 WAV
+                synthesizeMultipleChunks(chunks)
+            }
+        }
+    }
+
+    private fun synthesizeSingleChunk(text: String) {
+        val tempFile = File(context.cacheDir, "tts_audio.wav")
+        val utteranceId = UUID.randomUUID().toString()
+
+        tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+            override fun onStart(id: String?) {}
+            override fun onDone(id: String?) {
+                if (id == utteranceId) {
+                    viewModelScope.launch {
+                        _isSynthesizing.value = false
+                        playAudioFile(tempFile)
+                    }
+                }
+            }
+            override fun onError(id: String?) { handleError("TTS合成失败") }
+            override fun onStop(id: String?, interrupted: Boolean) {
+                if (interrupted) { _isSynthesizing.value = false }
+            }
+        })
+
+        val params = Bundle()
+        tts?.synthesizeToFile(text, params, tempFile, utteranceId)
+    }
+
+    // ★ 新增：多段合成
+    private fun synthesizeMultipleChunks(chunks: List<String>) {
+        val chunkFiles = mutableListOf<File>()
+        var completedCount = 0
+
+        tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+            override fun onStart(id: String?) {}
+            override fun onDone(id: String?) {
+                synchronized(chunkFiles) {
+                    completedCount++
+                    if (completedCount == chunks.size) {
                         viewModelScope.launch {
+                            val mergedFile = mergeWavFiles(chunkFiles)
                             _isSynthesizing.value = false
-                            playAudioFile(tempFile)
+                            if (mergedFile != null) {
+                                playAudioFile(mergedFile)
+                            } else {
+                                handleError("合并音频失败")
+                            }
+                            // 清理临时分段文件
+                            chunkFiles.forEach { it.delete() }
                         }
                     }
                 }
-                override fun onError(id: String?) { handleError("TTS合成失败") }
-                override fun onStop(id: String?, interrupted: Boolean) {
-                    if (interrupted) {
-                        _isSynthesizing.value = false
+            }
+            override fun onError(id: String?) { handleError("TTS合成失败 (chunk)") }
+            override fun onStop(id: String?, interrupted: Boolean) {
+                if (interrupted) { _isSynthesizing.value = false }
+            }
+        })
+
+        for ((index, chunk) in chunks.withIndex()) {
+            val chunkFile = File(context.cacheDir, "tts_chunk_$index.wav")
+            chunkFiles.add(chunkFile)
+            val utteranceId = "chunk_$index"
+            val params = Bundle()
+            tts?.synthesizeToFile(chunk, params, chunkFile, utteranceId)
+        }
+    }
+
+    // ★ 新增：将长文本按句子边界分段
+    private fun splitTextIntoChunks(text: String, maxLen: Int): List<String> {
+        if (text.length <= maxLen) return listOf(text)
+
+        val chunks = mutableListOf<String>()
+        val sentences = text.split(Regex("(?<=[。！？；\n.!?;])"))
+        val currentChunk = StringBuilder()
+
+        for (sentence in sentences) {
+            if (sentence.isEmpty()) continue
+            if (currentChunk.length + sentence.length > maxLen && currentChunk.isNotEmpty()) {
+                chunks.add(currentChunk.toString())
+                currentChunk.clear()
+            }
+            // 单个句子就超长的极端情况，强制截断
+            if (sentence.length > maxLen) {
+                if (currentChunk.isNotEmpty()) {
+                    chunks.add(currentChunk.toString())
+                    currentChunk.clear()
+                }
+                var start = 0
+                while (start < sentence.length) {
+                    val end = minOf(start + maxLen, sentence.length)
+                    chunks.add(sentence.substring(start, end))
+                    start = end
+                }
+            } else {
+                currentChunk.append(sentence)
+            }
+        }
+        if (currentChunk.isNotEmpty()) {
+            chunks.add(currentChunk.toString())
+        }
+        return chunks
+    }
+
+    // ★ 新增：拼接多个 WAV 文件（跳过后续文件的 WAV header）
+    private fun mergeWavFiles(files: List<File>): File? {
+        if (files.isEmpty()) return null
+        if (files.size == 1) return files[0]
+
+        return try {
+            val mergedFile = File(context.cacheDir, "tts_audio.wav")
+            val firstFile = files[0]
+            val firstBytes = firstFile.readBytes()
+
+            // WAV header 是前 44 字节
+            val headerSize = 44
+            if (firstBytes.size < headerSize) return null
+
+            // 计算所有音频数据的总长度（不含 header）
+            var totalDataSize = firstBytes.size - headerSize
+            for (i in 1 until files.size) {
+                val fileBytes = files[i].readBytes()
+                totalDataSize += (fileBytes.size - headerSize)
+            }
+
+            // 更新 WAV header 中的文件大小字段
+            val header = firstBytes.copyOfRange(0, headerSize)
+            // bytes 4-7: ChunkSize = 36 + totalDataSize
+            val chunkSize = 36 + totalDataSize
+            header[4] = (chunkSize and 0xFF).toByte()
+            header[5] = ((chunkSize shr 8) and 0xFF).toByte()
+            header[6] = ((chunkSize shr 16) and 0xFF).toByte()
+            header[7] = ((chunkSize shr 24) and 0xFF).toByte()
+            // bytes 40-43: Subchunk2Size = totalDataSize
+            header[40] = (totalDataSize and 0xFF).toByte()
+            header[41] = ((totalDataSize shr 8) and 0xFF).toByte()
+            header[42] = ((totalDataSize shr 16) and 0xFF).toByte()
+            header[43] = ((totalDataSize shr 24) and 0xFF).toByte()
+
+            FileOutputStream(mergedFile).use { fos ->
+                fos.write(header)
+                // 写入第一个文件的数据部分
+                fos.write(firstBytes, headerSize, firstBytes.size - headerSize)
+                // 写入后续文件的数据部分
+                for (i in 1 until files.size) {
+                    val fileBytes = files[i].readBytes()
+                    if (fileBytes.size > headerSize) {
+                        fos.write(fileBytes, headerSize, fileBytes.size - headerSize)
                     }
                 }
-            })
-
-            val params = Bundle()
-            tts?.synthesizeToFile(processedText, params, tempFile, utteranceId)
+            }
+            mergedFile
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
         }
     }
 
@@ -383,7 +585,7 @@ class AudioPlayerManager(private val context: Context) : ViewModel(), TextToSpee
         MediaController.releaseFuture(mediaControllerFuture)
     }
 
-    // --- 文本预处理逻辑 (从 Swift 翻译) ---
+    // --- 文本预处理逻辑 ---
 
     private fun preprocessText(text: String): String {
         val textWithoutCommas = removeCommasFromNumbers(text)
@@ -425,7 +627,7 @@ class AudioPlayerManager(private val context: Context) : ViewModel(), TextToSpee
 
     private fun processEnglishText(input: String): String {
         var processed = input
-            .replace("“", "").replace("”", "").replace("\"", "")
+            .replace("\u201C", "").replace("\u201D", "").replace("\"", "")
 
         processed = normalizeDash(processed)
 
@@ -534,7 +736,6 @@ class AudioPlayerManager(private val context: Context) : ViewModel(), TextToSpee
         if (n < 10) return digits[n]
         if (n < 20) return "十" + if (n % 10 == 0) "" else digits[n % 10]
         if (n < 100) return digits[n / 10] + "十" + if (n % 10 == 0) "" else digits[n % 10]
-        // ... 更多实现可以根据 Swift 版本精确翻译
-        return n.toString() // 简化版
+        return n.toString()
     }
 }
