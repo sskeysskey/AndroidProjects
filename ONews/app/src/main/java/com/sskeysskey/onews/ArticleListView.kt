@@ -16,8 +16,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -92,6 +95,10 @@ private fun ArticleListContent(
     var filterMode by remember { mutableStateOf(ArticleFilterMode.Unread) }
     var searchText by remember { mutableStateOf("") }
     var isSearching by remember { mutableStateOf(false) }
+
+    // --- 焦点与键盘控制 ---
+    val focusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
 
     // --- 图片下载状态 ---
     val context = LocalContext.current
@@ -169,7 +176,10 @@ private fun ArticleListContent(
                     actions = {
                         IconButton(onClick = {
                             isSearching = !isSearching
-                            if (!isSearching) searchText = ""
+                            if (!isSearching) {
+                                searchText = ""
+                                keyboardController?.hide() // 关闭搜索时隐藏键盘
+                            }
                         }) {
                             Icon(Icons.Default.Search, contentDescription = "Search")
                         }
@@ -191,13 +201,20 @@ private fun ArticleListContent(
         ) { paddingValues ->
             Column(modifier = Modifier.padding(paddingValues)) {
                 if (isSearching) {
+                    // 当搜索框出现时，自动请求焦点
+                    LaunchedEffect(Unit) {
+                        focusRequester.requestFocus()
+                        keyboardController?.show()
+                    }
+
                     OutlinedTextField(
                         value = searchText,
                         onValueChange = { searchText = it },
                         label = { Text("搜索标题或正文关键字") },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                            .focusRequester(focusRequester), // 绑定 focusRequester
                         singleLine = true
                     )
                 }
