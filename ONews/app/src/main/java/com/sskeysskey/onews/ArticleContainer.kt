@@ -121,17 +121,21 @@ fun ArticleContainer(
 
     Box(modifier = Modifier.fillMaxSize()) {
         currentArticleWithSource?.let { item ->
-            ArticleDetail(
-                article = item.article,
-                sourceName = item.sourceName,
-                viewModel = viewModel,
-                audioPlayerManager = audioPlayerManager,
-                navController = navController,
-                requestNextArticle = {
-                    audioPlayerManager.stop()
-                    switchToNextArticle(false)
-                }
-            )
+            // 使用 key 使得文章切换时重建 ArticleDetail（重置滚动位置到顶部）
+            key(item.article.id) {
+                ArticleDetail(
+                    article = item.article,
+                    sourceName = item.sourceName,
+                    viewModel = viewModel,
+                    audioPlayerManager = audioPlayerManager,
+                    navController = navController,
+                    isAudioPlayerVisible = isPlaybackActive,
+                    requestNextArticle = {
+                        audioPlayerManager.stop()
+                        switchToNextArticle(false)
+                    }
+                )
+            }
         }
 
         AnimatedVisibility(
@@ -145,7 +149,9 @@ fun ArticleContainer(
 
         if (showNoNextToast) {
             Snackbar(
-                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 80.dp),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 80.dp),
                 action = { Button(onClick = { showNoNextToast = false }) { Text("OK") } }
             ) {
                 Text("该分组内已无更多文章")

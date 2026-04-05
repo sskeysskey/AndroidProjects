@@ -21,10 +21,13 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
+import androidx.media3.common.ForwardingPlayer
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
+import androidx.media3.common.Timeline
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaController
 import androidx.media3.session.MediaSession
@@ -114,7 +117,7 @@ fun AudioPlayerView(playerManager: AudioPlayerManager) {
                     )
                 }
 
-                // ★ 倍速选择按钮 + 下拉菜单
+                // 倍速选择按钮 + 下拉菜单
                 Box {
                     TextButton(onClick = { showSpeedMenu = true }) {
                         Text(
@@ -168,7 +171,7 @@ fun AudioPlayerView(playerManager: AudioPlayerManager) {
                     }
                 }
 
-                // 下一首
+                // 下一篇文章
                 IconButton(onClick = { playerManager.onNextRequested() }) {
                     Icon(Icons.Default.SkipNext, contentDescription = "Next")
                 }
@@ -179,7 +182,14 @@ fun AudioPlayerView(playerManager: AudioPlayerManager) {
 
 // ==================== Service ====================
 
+@androidx.annotation.OptIn(UnstableApi::class)
 class AudioPlaybackService : MediaSessionService() {
+
+    companion object {
+        /** 供 AudioPlayerManager 注册的回调，通知栏"下一条"按钮触发时调用 */
+        var onNextArticleRequested: (() -> Unit)? = null
+    }
+
     private var mediaSession: MediaSession? = null
 
     override fun onCreate() {
@@ -189,11 +199,46 @@ class AudioPlaybackService : MediaSessionService() {
             .setUsage(C.USAGE_MEDIA)
             .build()
 
-        val player = ExoPlayer.Builder(this)
+        val exoPlayer = ExoPlayer.Builder(this)
             .setAudioAttributes(audioAttributes, true)
             .build()
 
-        mediaSession = MediaSession.Builder(this, player).build()
+        // 用 ForwardingPlayer 包装，使通知栏的"下一条"按文章跳转，禁用"上一条"
+        val forwardingPlayer = object : ForwardingPlayer(exoPlayer) {
+
+            override fun getAvailableCommands(): Player.Commands {
+                return super.getAvailableCommands().buildUpon()
+                    .remove(Player.COMMAND_SEEK_TO_PREVIOUS)
+                    .remove(Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
+                    .build()
+            }
+
+            override fun isCommandAvailable(command: Int): Boolean {
+                return when (command) {
+                    Player.COMMAND_SEEK_TO_PREVIOUS,
+                    Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM -> false
+                    else -> super.isCommandAvailable(command)
+                }
+            }
+
+            // 始终显示"下一条"按钮（用于跳转到下一篇文章）
+            override fun hasNextMediaItem(): Boolean = true
+
+            override fun seekToNext() {
+                onNextArticleRequested?.invoke()
+            }
+
+            override fun seekToNextMediaItem() {
+                onNextArticleRequested?.invoke()
+            }
+
+            // 禁用"上一条"
+            override fun hasPreviousMediaItem(): Boolean = false
+            override fun seekToPrevious() { /* no-op */ }
+            override fun seekToPreviousMediaItem() { /* no-op */ }
+        }
+
+        mediaSession = MediaSession.Builder(this, forwardingPlayer).build()
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? {
@@ -284,6 +329,10 @@ class AudioPlayerManager(private val context: Context) : ViewModel(), TextToSpee
         mediaControllerFuture.addListener({
             mediaController = mediaControllerFuture.get()
             setupPlayerListener()
+            // 注册通知栏"下一条"按钮的回调
+            AudioPlaybackService.onNextArticleRequested = {
+                viewModelScope.launch { onNextRequested() }
+            }
         }, MoreExecutors.directExecutor())
     }
 

@@ -10,7 +10,7 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color // <-- 已添加
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -29,6 +29,7 @@ fun ArticleDetail(
     viewModel: NewsViewModel,
     audioPlayerManager: AudioPlayerManager,
     navController: NavController,
+    isAudioPlayerVisible: Boolean,
     requestNextArticle: () -> Unit
 ) {
     val scrollState = rememberScrollState()
@@ -54,7 +55,11 @@ fun ArticleDetail(
                             audioPlayerManager.startPlayback(article.articleContent, article.topic)
                         }
                     }) {
-                        Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = "Play Audio", tint = if(isPlaying) MaterialTheme.colorScheme.primary else LocalContentColor.current)
+                        Icon(
+                            Icons.AutoMirrored.Filled.VolumeUp,
+                            contentDescription = "Play Audio",
+                            tint = if (isPlaying) MaterialTheme.colorScheme.primary else LocalContentColor.current
+                        )
                     }
                     IconButton(onClick = { /* 分享逻辑 */ }) {
                         Icon(Icons.Default.Share, contentDescription = "Share")
@@ -90,7 +95,9 @@ fun ArticleDetail(
                             .build(),
                         contentDescription = imageName,
                         contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp)
                     )
                 }
             }
@@ -107,11 +114,15 @@ fun ArticleDetail(
             Spacer(modifier = Modifier.height(24.dp))
             Button(
                 onClick = requestNextArticle,
-                modifier = Modifier.fillMaxWidth().height(50.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(50.dp)
             ) {
-                Text("读取下一篇")
+                Text("阅读下一篇文章")
             }
-            Spacer(modifier = Modifier.height(24.dp))
+
+            // 当音频播放面板可见时，增加额外的底部间距，避免内容和按钮被遮挡
+            Spacer(modifier = Modifier.height(if (isAudioPlayerVisible) 200.dp else 24.dp))
         }
     }
 }
