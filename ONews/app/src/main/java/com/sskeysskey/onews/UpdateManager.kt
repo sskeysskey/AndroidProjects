@@ -29,6 +29,7 @@ data class ServerVersion(
     @SerializedName("version") val version: String,
     @SerializedName("files") val files: List<FileInfo>,
     @SerializedName("source_mappings") val sourceMappings: Map<String, String>? = null,
+    @SerializedName("source_mappings_android") val sourceMappingsAndroid: Map<String, String>? = null, // 【新增】Android专属映射
 )
 
 data class FileInfo(
@@ -97,7 +98,9 @@ class UpdateManager(
         ) {
             val serverVersion = apiService.getServerVersion()
 
-            serverVersion.sourceMappings?.let { mappings ->
+            // 【核心修改】优先读取 Android 专属配置，如果没有则回退到通用的 sourceMappings
+            val mappingsToUse = serverVersion.sourceMappingsAndroid ?: serverVersion.sourceMappings
+            mappingsToUse?.let { mappings ->
                 val prefs = context.getSharedPreferences("ONewsPrefs", Context.MODE_PRIVATE)
                 val json = Gson().toJson(mappings)
                 prefs.edit { putString("source_mappings", json) }
@@ -136,7 +139,7 @@ class UpdateManager(
             }
 
             if (downloadTasks.isEmpty()) {
-                _syncMessage.value = "当前配置文件已是最新版本"
+                _syncMessage.value = "当前已是最新版本"
                 delay(500)
                 return@safelyRunSync
             }
@@ -227,8 +230,6 @@ class UpdateManager(
         }
     }
 
-    // --- 保留原有方法 ---
-
     // 修改点：添加 suspend 关键字，并移除 externalScope.launch
     suspend fun checkAndDownloadAllNewsManifests() {
         safelyRunSync(
@@ -237,7 +238,9 @@ class UpdateManager(
         ) {
             val serverVersion = apiService.getServerVersion()
 
-            serverVersion.sourceMappings?.let { mappings ->
+            // 【核心修改】同样在这里优先读取 Android 专属配置
+            val mappingsToUse = serverVersion.sourceMappingsAndroid ?: serverVersion.sourceMappings
+            mappingsToUse?.let { mappings ->
                 val prefs = context.getSharedPreferences("ONewsPrefs", Context.MODE_PRIVATE)
                 val json = Gson().toJson(mappings)
                 prefs.edit { putString("source_mappings", json) }
