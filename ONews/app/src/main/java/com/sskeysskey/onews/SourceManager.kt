@@ -276,7 +276,9 @@ fun SourceList(
                                                         }
                                                     }
                                                 }
-                                            }
+                                            },
+                                            // --- 添加这一行 ---
+                                            onLongClick = {} 
                                         )
                                     }
                                 }

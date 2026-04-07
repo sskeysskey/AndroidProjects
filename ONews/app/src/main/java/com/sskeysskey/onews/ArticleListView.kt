@@ -1,13 +1,17 @@
 package com.sskeysskey.onews
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Search
@@ -84,7 +88,7 @@ fun AllArticlesListView(
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 private fun ArticleListContent(
     navController: NavController,
@@ -163,6 +167,13 @@ private fun ArticleListContent(
                 timestamp
             }
         )
+    }
+
+    // --- 新增：获取当前显示的扁平化文章列表，用于“以上全部已读”和“以下全部已读” ---
+    val visibleArticles = remember(sortedTimestamps, filteredArticles) {
+        sortedTimestamps.flatMap { timestamp ->
+            filteredArticles[timestamp]?.map { it.articleWithSource.article } ?: emptyList()
+        }
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -269,34 +280,119 @@ private fun ArticleListContent(
                             if (!isCollapsed) {
                                 items(groupArticles, key = { it.articleWithSource.article.id }) { searchResult ->
                                     val item = searchResult.articleWithSource
-                                    ArticleRowCard(
-                                        searchResult = searchResult,
-                                        sourceName = if (isAllArticles) item.sourceName else null,
-                                        isSearching = isSearching,
-                                        onClick = {
-                                            val fromContext = if (isAllArticles) "all" else "source"
-                                            val navigateAction = {
-                                                navController.navigate("article_container/${item.article.id}/${item.sourceName}/$fromContext")
-                                            }
+                                    var showMenu by remember { mutableStateOf(false) }
 
-                                            // 点击时检查并下载图片
-                                            if (item.article.images.isEmpty() || updateManager.checkIfImagesExistForArticle(item.article.timestamp, item.article.images)) {
-                                                navigateAction()
+                                    // --- 新增：左滑标记已读 ---
+                                    val dismissState = rememberSwipeToDismissBoxState(
+                                        confirmValueChange = { dismissValue ->
+                                            if (dismissValue == SwipeToDismissBoxValue.EndToStart) {
+                                                if (!item.article.isRead) {
+                                                    viewModel.markAsRead(item.article.id)
+                                                }
+                                                false // 返回 false 使其回弹，状态改变会自动将其从列表中移除（如果在未读列表）
                                             } else {
-                                                coroutineScope.launch {
-                                                    isDownloadingImages = true
-                                                    downloadProgress = 0f
-                                                    downloadProgressText = "准备中..."
-                                                    try {
-                                                        updateManager.downloadImagesForArticle(item.article.timestamp, item.article.images) { current, total ->
-                                                            downloadProgress = if (total > 0) current.toFloat() / total else 0f
-                                                            downloadProgressText = "已下载 $current / $total"
+                                                false
+                                            }
+                                        },
+                                        positionalThreshold = { it * 0.4f }
+                                    )
+
+                                    SwipeToDismissBox(
+                                        state = dismissState,
+                                        enableDismissFromStartToEnd = false,
+                                        backgroundContent = {
+                                            val color by animateColorAsState(
+                                                if (dismissState.targetValue == SwipeToDismissBoxValue.EndToStart) MaterialTheme.colorScheme.primary else Color.Transparent,
+                                                label = "swipeColor"
+                                            )
+                                            Box(
+                                                Modifier
+                                                    .fillMaxSize()
+                                                    .clip(RoundedCornerShape(12.dp))
+                                                    .background(color)
+                                                    .padding(horizontal = 20.dp),
+                                                contentAlignment = Alignment.CenterEnd
+                                            ) {
+                                                Icon(Icons.Default.Check, contentDescription = "Mark as Read", tint = Color.White)
+                                            }
+                                        },
+                                        content = {
+                                            Box {
+                                                ArticleRowCard(
+                                                    searchResult = searchResult,
+                                                    sourceName = if (isAllArticles) item.sourceName else null,
+                                                    isSearching = isSearching,
+                                                    onClick = {
+                                                        val fromContext = if (isAllArticles) "all" else "source"
+                                                        val navigateAction = {
+                                                            navController.navigate("article_container/${item.article.id}/${item.sourceName}/$fromContext")
                                                         }
-                                                    } catch (e: Exception) {
-                                                        e.printStackTrace()
-                                                    } finally {
-                                                        isDownloadingImages = false
-                                                        navigateAction()
+
+                                                        // 点击时检查并下载图片
+                                                        if (item.article.images.isEmpty() || updateManager.checkIfImagesExistForArticle(item.article.timestamp, item.article.images)) {
+                                                            navigateAction()
+                                                        } else {
+                                                            coroutineScope.launch {
+                                                                isDownloadingImages = true
+                                                                downloadProgress = 0f
+                                                                downloadProgressText = "准备中..."
+                                                                try {
+                                                                    updateManager.downloadImagesForArticle(item.article.timestamp, item.article.images) { current, total ->
+                                                                        downloadProgress = if (total > 0) current.toFloat() / total else 0f
+                                                                        downloadProgressText = "已下载 $current / $total"
+                                                                    }
+                                                                } catch (e: Exception) {
+                                                                    e.printStackTrace()
+                                                                } finally {
+                                                                    isDownloadingImages = false
+                                                                    navigateAction()
+                                                                }
+                                                            }
+                                                        }
+                                                    },
+                                                    onLongClick = {
+                                                        showMenu = true
+                                                    }
+                                                )
+
+                                                // --- 新增：长按菜单 ---
+                                                DropdownMenu(
+                                                    expanded = showMenu,
+                                                    onDismissRequest = { showMenu = false }
+                                                ) {
+                                                    if (item.article.isRead) {
+                                                        DropdownMenuItem(
+                                                            text = { Text("标记为未读") },
+                                                            onClick = {
+                                                                viewModel.markAsUnread(item.article.id)
+                                                                showMenu = false
+                                                            }
+                                                        )
+                                                    } else {
+                                                        DropdownMenuItem(
+                                                            text = { Text("标记为已读") },
+                                                            onClick = {
+                                                                viewModel.markAsRead(item.article.id)
+                                                                showMenu = false
+                                                            }
+                                                        )
+                                                        if (filterMode == ArticleFilterMode.Unread && visibleArticles.isNotEmpty()) {
+                                                            Divider()
+                                                            DropdownMenuItem(
+                                                                text = { Text("以上全部已读") },
+                                                                onClick = {
+                                                                    viewModel.markAllAboveAsRead(item.article.id, visibleArticles)
+                                                                    showMenu = false
+                                                                }
+                                                            )
+                                                            DropdownMenuItem(
+                                                                text = { Text("以下全部已读") },
+                                                                onClick = {
+                                                                    viewModel.markAllBelowAsRead(item.article.id, visibleArticles)
+                                                                    showMenu = false
+                                                                }
+                                                            )
+                                                        }
                                                     }
                                                 }
                                             }
@@ -434,20 +530,26 @@ private fun SegmentedControl(
     }
 }
 
-// --- 修改：展示高亮标题 ---
+// --- 修改：展示高亮标题，并支持长按 ---
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ArticleRowCard(
     searchResult: SearchResult,
     sourceName: String?,
     isSearching: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
 ) {
     val article = searchResult.articleWithSource.article
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
+            .clip(RoundedCornerShape(12.dp))
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            ),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant
         ),

@@ -56,6 +56,28 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
     private val badgeManager = AppBadgeManager(application)
     private val prefs = application.getSharedPreferences("ONewsPrefs", Context.MODE_PRIVATE)
     private val readPrefs = application.getSharedPreferences("ReadRecords", Context.MODE_PRIVATE)
+    
+    // 获取旧版本的默认字体大小，作为新配置的默认值以平滑过渡
+    private val defaultScale = prefs.getFloat("font_size_scale", 1.0f)
+
+    // 拆分为标题和正文独立的字体缩放比例
+    private val _titleFontSizeScale = MutableStateFlow(prefs.getFloat("title_font_size_scale", defaultScale))
+    val titleFontSizeScale = _titleFontSizeScale.asStateFlow()
+
+    private val _bodyFontSizeScale = MutableStateFlow(prefs.getFloat("body_font_size_scale", defaultScale))
+    val bodyFontSizeScale = _bodyFontSizeScale.asStateFlow()
+
+    // 更新标题字体大小
+    fun updateTitleFontSizeScale(scale: Float) {
+        _titleFontSizeScale.value = scale
+        prefs.edit().putFloat("title_font_size_scale", scale).apply()
+    }
+
+    // 更新正文字体大小
+    fun updateBodyFontSizeScale(scale: Float) {
+        _bodyFontSizeScale.value = scale
+        prefs.edit().putFloat("body_font_size_scale", scale).apply()
+    }
 
     // 官方推荐的排序顺序
     private val preferredOrder = listOf(

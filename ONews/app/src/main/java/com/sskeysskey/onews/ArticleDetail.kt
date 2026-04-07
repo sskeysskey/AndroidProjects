@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.FormatSize
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -66,6 +67,13 @@ fun ArticleDetail(
     // 控制分享弹窗和微信引导弹窗的状态
     var showShareSheet by remember { mutableStateOf(false) }
     var showWeChatGuide by remember { mutableStateOf(false) }
+
+    // 分别监听标题和正文的字体缩放比例
+    val titleFontSizeScale by viewModel.titleFontSizeScale.collectAsState()
+    val bodyFontSizeScale by viewModel.bodyFontSizeScale.collectAsState()
+    
+    // 控制字体调整弹窗的状态
+    var showFontSizeSheet by remember { mutableStateOf(false) }
 
     // 准备分享的文本：前7段 + iOS同款后缀
     val textToShare = remember(paragraphs) {
@@ -153,6 +161,11 @@ fun ArticleDetail(
                     }
                 },
                 actions = {
+                    // 添加字体调整按钮
+                    IconButton(onClick = { showFontSizeSheet = true }) {
+                        Icon(Icons.Default.FormatSize, contentDescription = "Adjust Font Size")
+                    }
+
                     IconButton(onClick = {
                         if (isPlaybackActive) {
                             // 如果当前处于激活状态，点击则彻底关闭音频播放
@@ -188,7 +201,16 @@ fun ArticleDetail(
                 .padding(horizontal = 16.dp)
         ) {
             Spacer(modifier = Modifier.height(16.dp))
-            Text(article.topic, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+            
+            // 应用标题字体缩放比例
+            Text(
+                text = article.topic, 
+                style = MaterialTheme.typography.headlineMedium, 
+                fontWeight = FontWeight.Bold,
+                fontSize = MaterialTheme.typography.headlineMedium.fontSize * titleFontSizeScale,
+                lineHeight = MaterialTheme.typography.headlineMedium.lineHeight * titleFontSizeScale
+            )
+            
             Spacer(modifier = Modifier.height(8.dp))
             Text(sourceName.replace("_", " "), style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
             Spacer(modifier = Modifier.height(16.dp))
@@ -197,10 +219,12 @@ fun ArticleDetail(
             contentItems.forEach { item ->
                 when (item) {
                     is ContentItem.TextItem -> {
+                        // 应用正文字体缩放比例
                         Text(
                             text = item.text,
                             style = MaterialTheme.typography.bodyLarge,
-                            lineHeight = 28.sp,
+                            fontSize = 16.sp * bodyFontSizeScale, // 基础大小乘以正文缩放比例
+                            lineHeight = 28.sp * bodyFontSizeScale, // 行高也等比例缩放
                             modifier = Modifier.padding(vertical = 8.dp)
                         )
                     }
@@ -235,7 +259,87 @@ fun ArticleDetail(
         }
     }
 
-    // 1. 自定义分享菜单 BottomSheet
+    // 1. 添加字体调整的 BottomSheet
+    if (showFontSizeSheet) {
+        ModalBottomSheet(onDismissRequest = { showFontSizeSheet = false }) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp, vertical = 16.dp)
+                    .padding(bottom = 32.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text("字体大小调整", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(24.dp))
+                
+                // 标题字体调整滑块
+                Text("标题大小", fontSize = 14.sp, color = Color.Gray, modifier = Modifier.align(Alignment.Start))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("A", fontSize = 14.sp, color = Color.Gray)
+                    Slider(
+                        value = titleFontSizeScale,
+                        onValueChange = { viewModel.updateTitleFontSizeScale(it) },
+                        valueRange = 0.8f..1.8f,
+                        steps = 9,
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(horizontal = 16.dp)
+                    )
+                    Text("A", fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                }
+                
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // 正文字体调整滑块
+                Text("正文大小", fontSize = 14.sp, color = Color.Gray, modifier = Modifier.align(Alignment.Start))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("A", fontSize = 14.sp, color = Color.Gray)
+                    Slider(
+                        value = bodyFontSizeScale,
+                        onValueChange = { viewModel.updateBodyFontSizeScale(it) },
+                        valueRange = 0.8f..1.8f,
+                        steps = 9,
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(horizontal = 16.dp)
+                    )
+                    Text("A", fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                }
+                
+                Spacer(modifier = Modifier.height(24.dp))
+                
+                // 实时预览文字
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color.Gray.copy(alpha = 0.1f), shape = MaterialTheme.shapes.medium)
+                        .padding(16.dp)
+                ) {
+                    Text(
+                        text = "预览：这是一个测试标题",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = MaterialTheme.typography.headlineMedium.fontSize * titleFontSizeScale,
+                        lineHeight = MaterialTheme.typography.headlineMedium.lineHeight * titleFontSizeScale
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "预览：这是一段测试正文。通过拖动上方的滑块，您可以分别调整标题和正文的显示大小，以获得最佳的阅读体验。",
+                        fontSize = 16.sp * bodyFontSizeScale,
+                        lineHeight = 28.sp * bodyFontSizeScale,
+                        color = Color.DarkGray
+                    )
+                }
+            }
+        }
+    }
+
+    // 2. 自定义分享菜单 BottomSheet
     if (showShareSheet) {
         ModalBottomSheet(onDismissRequest = { showShareSheet = false }) {
             Column(
@@ -282,7 +386,7 @@ fun ArticleDetail(
         }
     }
 
-    // 2. 微信手动粘贴引导页 BottomSheet
+    // 3. 微信手动粘贴引导页 BottomSheet
     if (showWeChatGuide) {
         ModalBottomSheet(onDismissRequest = { showWeChatGuide = false }) {
             Column(
