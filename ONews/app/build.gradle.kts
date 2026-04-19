@@ -50,6 +50,8 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.core:core-ktx:1.12.0")
 
+    implementation ("com.android.billingclient:billing:7.0.0")
+
     // --- Material Design 3 ---
     implementation("androidx.compose.material3:material3")
     // --- 这一行至关重要，它包含了所有额外的图标 ---
